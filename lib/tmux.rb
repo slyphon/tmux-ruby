@@ -12,6 +12,8 @@ require "tmux/options_list"
 require "tmux/options"
 require "tmux/widget"
 
+require 'open3'
+
 # @todo Support querying and modifying keymaps
 module Tmux
   # The version of this library
@@ -42,17 +44,47 @@ module Tmux
     # @raise [Exception::UnknownCommand]
     # @api private
     def invoke_command(cmd, unset_tmux = false)
-      command = ""
-      command << "TMUX='' " if unset_tmux
-      command << "#{@binary} #{cmd}"
+#       command = ""
+#       command << "TMUX='' " if unset_tmux
+#       command << "#{@binary} #{cmd}"
 
-      $stderr.puts(command) if verbose?
-      ret = `#{command} 2>&1`
-      if ret.start_with?("unknown command:")
-        raise Exception::UnknownCommand, ret.split(":", 2).last.strip
+#       $stderr.puts(command) if verbose?
+#       ret = `#{command} 2>&1`
+#       if ret.start_with?("unknown command:")
+#         raise Exception::UnknownCommand, ret.split(":", 2).last.strip
+#       else
+#         return ret
+#       end
+
+      command = [binary]
+
+      case cmd
+      when Array
+        command.concat(cmd)
       else
-        return ret
+        command << cmd
+        command = command.join(' ')
       end
+
+      env, opts = {}, {}
+
+      args = [env, command, opts]
+      
+      env['TMUX'] = nil if unset_tmux
+
+      $stderr.puts command.join(' ') if verbose?
+
+      output, status = Open3.capture2e(*args)
+
+      unless status.exited? and status.success?
+        raise Exception::CommandFailed, "command #{command.join(' ').inspect} failed with status: #{status.inspect}" 
+      end
+
+      if output.start_with?('unknown command:')
+        raise Exception::UnknownCommand, output.split(':', 2).last.strip
+      end
+
+      output
     end
   end
 end
